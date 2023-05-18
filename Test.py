@@ -4,6 +4,8 @@ import numpy as np
 import dlib
 from math import hypot
 from keras.models import load_model
+import matplotlib.pyplot as plt
+import pandas as pd
 
 
 class Model:
@@ -94,6 +96,9 @@ class Model:
             font = cv2.FONT_HERSHEY_SIMPLEX
             faces = self.detector(gray)
             benchmark = []
+            total=len(faces)
+            focused=0
+            nfocused=0
             for face in faces:
                 x, y = face.left(), face.top()
                 x1, y1 = face.right(), face.bottom()
@@ -117,6 +122,13 @@ class Model:
                 benchmark.append([gaze_ratio_lr, gaze_ratio_ud, left_eye_ratio])
                 emotion = self.emot(gray)
                 ci = self.gen_attention(ii,key)
+                print("CI","faces",ci)
+                if ci==1:
+                    focused=focused+1
+                    ci='Focused'
+                else:
+                    nfocused=nfocused+1
+                    ci='Not Focused'
                 emotions={0:'angry',1:'happy',2:'neutral'}
                 # if emotion:
                 cv2.putText(frame, emotions[self.emotion],
@@ -126,7 +138,8 @@ class Model:
                 self.x = gaze_ratio_lr
                 self.y = gaze_ratio_ud
                 self.size = left_eye_ratio
-            return frame
+            print("total",total,focused,nfocused)
+            return frame,total,focused,nfocused
         except Exception as e:
             print("error",e)
             return frame
@@ -144,6 +157,7 @@ class Model:
             scaleFactor=1.1,
             minNeighbors=7,
             minSize=(100, 100),)
+        print("faces",len(faces))
         if len(faces) > 0:
             for x, y, width, height in faces:
                 cropped_face = gray[y:y + height, x:x + width]
@@ -196,36 +210,17 @@ class Model:
         
         if attention > 0.65:
             print("Fully Concentrated") 
+            return 1
         elif attention > 0.25 and attention <= 0.65:
             print("Concentrated") 
+            return 1
         else:
             from datetime import datetime
             now = datetime.now()
             dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
             print("Hi professor Student is not Paying Attention ", dt_string) 
-            return "Pay attention!"
-        from csv import DictWriter
-        field_names=["Concentration"]
-        #if ii<3600:
-        mydict = { "Concentration": attention }
-        file='./results/'+key+"-1.csv"
-        with open(file, 'a', newline='', encoding="UTF-8") as f_object:
-                dictwriter_object = DictWriter(f_object, fieldnames=field_names)
-                dictwriter_object.writerow(mydict)
-        """
-        elif ii<7200:
-            mydict = { "Concentration": attention }
-            file='./results/'+key+"-2.csv"
-            with open(file, 'a', newline='', encoding="UTF-8") as f_object:
-                dictwriter_object = DictWriter(f_object, fieldnames=field_names)
-                dictwriter_object.writerow(mydict)
-        else:
-            mydict = { "Concentration": attention }
-            file='./results/'+key+"-3.csv"
-            with open(file, 'a', newline='', encoding="UTF-8") as f_object:
-                dictwriter_object = DictWriter(f_object, fieldnames=field_names)
-                dictwriter_object.writerow(mydict)
-        """
+            return 0
+        
         f_object.close()
 
 # Initializing
@@ -237,19 +232,48 @@ for key, value in files.items():
 
     # Capture every frame and send to detector
     i=0
+    F=1
+    coloms=['Frames','Focused','Not Focused']
+    Data=[]
+    Data2=[]
     while True:
         _, frame = cap.read()
-        bm = ana.detect_face(frame,i,Key)
+        bm,tot,foc,nfoc = ana.detect_face(frame,i,Key)
         i=i+1
         print("Key",i,Key)
         key = cv2.waitKey(1)
+        if tot>0:
+            res=[]
+            res2=[]
+            res.append('F'+str(F))
+            res.append((foc/tot)*100.0)
+            res.append((nfoc/tot)*100.0)
+            Data.append(res)
+            res2.append('F'+str(F))
+            res2.append((foc))
+            res2.append((nfoc))
+            Data2.append(res2)
+            F=F+1
+        if F>50:
+            break
+
     # Exit if 'q' is pressed
         if key == ord('q'):
             break
         if i==500:
             break
-    break
+    
+    df = pd.DataFrame(Data,
+				columns=coloms)
+    df.plot(x='Frames', kind='bar', stacked=True,
+		title='Results Percentage')
+    plt.savefig('res.png')
 
+    df2 = pd.DataFrame(Data2,
+				columns=coloms)
+    df2.plot(x='Frames', kind='bar', stacked=True,
+		title='Results Percentage')
+    plt.savefig('res2.png')
     # Release the memory
     cap.release()
     cv2.destroyAllWindows()
